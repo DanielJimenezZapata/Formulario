@@ -106,13 +106,6 @@ def admin_main():
         except:
             st.code(quota_url)
 
-    # Gestión de cupos
-    st.divider()
-    if st.button("🔄 Resetear cupos a 100"):
-        if quota_repo.reset_slots():
-            st.success("Cupos reseteados")
-            time.sleep(1)
-            st.rerun()
 
     # Cerrar sesión
     st.divider()
