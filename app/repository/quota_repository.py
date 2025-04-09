@@ -9,12 +9,16 @@ class QuotaRepository:
         conn = self.db.connect_db()
         if not conn:
             return 0
+            
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT remaining FROM quota WHERE id=1")
             result = cursor.fetchone()
             return result[0] if result else 0
-        except:
+        except mysql.connector.Error as err:
+            if err.errno == 1146:  # Tabla no existe
+                self._initialize_database()
+                return 100
             return 0
         finally:
             if conn.is_connected():
@@ -24,11 +28,12 @@ class QuotaRepository:
         conn = self.db.connect_db()
         if not conn:
             return {"error": "Error de conexión"}
+            
         try:
             cursor = conn.cursor()
-            cursor.execute("UPDATE quota SET remaining = remaining - 1 WHERE id=1 AND remaining > 0")
+            cursor.execute("UPDATE quota SET remaining = GREATEST(0, remaining - 1) WHERE id=1")
             conn.commit()
-            return {"message": "Success"} if cursor.rowcount > 0 else {"error": "No hay cupos"}
+            return {"message": "Success"} if cursor.rowcount > 0 else {"error": "No actualizado"}
         except Exception as e:
             return {"error": str(e)}
         finally:
@@ -38,7 +43,8 @@ class QuotaRepository:
     def reset_slots(self, value=100):
         conn = self.db.connect_db()
         if not conn:
-            return {"error": "Error de conexión"}
+            return False
+            
         try:
             cursor = conn.cursor()
             cursor.execute("""
@@ -47,15 +53,19 @@ class QuotaRepository:
                 ON DUPLICATE KEY UPDATE remaining = %s
             """, (value, value))
             conn.commit()
-            return {"message": f"Cupos actualizados a {value}"}
+            return True
         except Exception as e:
-            return {"error": str(e)}
+            print(f"Error: {e}")
+            return False
         finally:
             if conn.is_connected():
                 conn.close()
 
     def verify_admin_password(self, password):
         conn = self.db.connect_db()
+        if not conn:
+            return False
+            
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT password FROM admin_credentials WHERE id=1")
@@ -64,7 +74,48 @@ class QuotaRepository:
         except mysql.connector.Error as err:
             if err.errno == 1146:  # Tabla no existe
                 return password == "admin123"
-            raise
+            return False
+        finally:
+            if conn.is_connected():
+                conn.close()
+
+    def update_admin_password(self, new_password):
+        conn = self.db.connect_db()
+        if not conn:
+            return False
+            
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS admin_credentials (
+                    id INT PRIMARY KEY,
+                    password VARCHAR(255)
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO admin_credentials (id, password)
+                VALUES (1, %s)
+                ON DUPLICATE KEY UPDATE password = %s
+            """, (new_password, new_password))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error: {e}")
+            return False
+        finally:
+            if conn.is_connected():
+                conn.close()
+
+    def _initialize_database(self):
+        conn = self.db.connect_db()
+        if not conn:
+            return
+            
+        try:
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE IF NOT EXISTS quota (id INT PRIMARY KEY, remaining INT)")
+            cursor.execute("INSERT INTO quota (id, remaining) VALUES (1, 100)")
+            conn.commit()
         finally:
             if conn.is_connected():
                 conn.close()
