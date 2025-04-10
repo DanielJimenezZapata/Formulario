@@ -4,7 +4,6 @@ import pyperclip
 from repository.quota_repository import QuotaRepository
 
 def check_authentication():
-    """Verifica si el usuario está autenticado"""
     if "admin_logged" not in st.session_state:
         st.session_state.admin_logged = False
     
@@ -14,7 +13,6 @@ def check_authentication():
     return True
 
 def show_login():
-    """Muestra el formulario de login"""
     st.title("🔒 Acceso Administrativo")
     with st.form("login_form"):
         password = st.text_input("Contraseña", type="password")
@@ -98,13 +96,31 @@ def admin_main():
         options=list(st.session_state.app_urls.keys())
     )
     
+    quota_url = f"{st.session_state.app_urls[selected_url]}/?page=Gestión+de+Cupos"
     if st.button("📋 Copiar URL de Gestión"):
-        quota_url = f"{st.session_state.app_urls[selected_url]}/?page=Gestión+de+Cupos"
         try:
             pyperclip.copy(quota_url)
             st.success("¡URL copiada al portapapeles!")
         except:
             st.code(quota_url)
+
+    # Generar acceso para cliente
+    st.divider()
+    st.subheader("🔗 Generar Acceso para Cliente")
+    
+    client_url = f"{st.session_state.app_urls[selected_url]}/client_access?url={quota_url}"
+    launch_cmd = f"streamlit run client_access.py --server.address=0.0.0.0 --server.port=8502 --?url={quota_url}"
+    
+    st.code(launch_cmd)
+    
+    if st.button("📋 Copiar comando para lanzar cliente"):
+        try:
+            pyperclip.copy(launch_cmd)
+            st.success("Comando copiado al portapapeles!")
+        except:
+            st.error("Error al copiar al portapapeles")
+    
+    st.markdown(f"O acceder directamente a: [Client Access]({client_url})")
 
     # Gestión de cupos
     st.divider()

@@ -16,7 +16,7 @@ class QuotaRepository:
             result = cursor.fetchone()
             return result[0] if result else 0
         except mysql.connector.Error as err:
-            if err.errno == 1146:  # Tabla no existe
+            if err.errno == 1146:
                 self._initialize_database()
                 return 100
             return 0
@@ -72,7 +72,7 @@ class QuotaRepository:
             result = cursor.fetchone()
             return password == (result[0] if result else "admin123")
         except mysql.connector.Error as err:
-            if err.errno == 1146:  # Tabla no existe
+            if err.errno == 1146:
                 return password == "admin123"
             return False
         finally:
