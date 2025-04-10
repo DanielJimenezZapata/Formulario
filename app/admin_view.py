@@ -2,6 +2,8 @@ import streamlit as st
 import time
 import pyperclip
 from repository.quota_repository import QuotaRepository
+from storage.url_storage import load_urls, save_urls
+from urllib.parse import quote
 
 def check_authentication():
     """Verifica si el usuario está autenticado"""
@@ -60,17 +62,23 @@ def admin_main():
     st.header("📌 Gestión de URLs")
     
     if "app_urls" not in st.session_state:
-        st.session_state.app_urls = {"Principal": "http://localhost:8501"}
+        st.session_state.app_urls = load_urls()
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         with st.expander("➕ Añadir URL"):
             new_name = st.text_input("Nombre descriptivo")
             new_url = st.text_input("URL completa (https://)")
+            new_cupos = st.number_input("Máximo de cupos", min_value=0, step=1, key="new_cupos")
             if st.button("Guardar URL"):
                 if new_name and new_url:
-                    st.session_state.app_urls[new_name] = new_url
+                    st.session_state.app_urls[new_name] = {
+                        "url": new_url,
+                        "max_cupos": new_cupos
+                    }
+                    save_urls(st.session_state.app_urls)
+                    
                     st.success("URL añadida")
                     time.sleep(1)
                     st.rerun()
@@ -89,6 +97,32 @@ def admin_main():
                     st.rerun()
             else:
                 st.warning("Debe haber al menos una URL")
+    
+    with col3:
+        with st.expander("📝 Editar URL"):
+            if st.session_state.app_urls:
+                selected_edit_key = st.selectbox("Seleccionar la URL a editar", options=list(st.session_state.app_urls.keys()))
+
+                url_data = st.session_state.app_urls[selected_edit_key]
+
+                if isinstance(url_data, str):
+                    url_data = {"url": url_data, "max_cupos": 0}
+
+                edited_name = st.text_input("Nuevo nombre descriptivo", value=selected_edit_key, key="edit_name")
+                edited_url = st.text_input("Nueva URL", value=url_data.get("url", ""), key="edit_url")
+                edited_cupos = st.number_input("Máximo de cupos", value=url_data.get("max_cupos", 0), min_value=0, step=1, key="edit_cupos")
+
+            if st.button("Guardar cambios"):
+                if edited_name and edited_url:
+                    if edited_name != selected_edit_key:
+                        st.session_state.app_urls.pop(selected_edit_key)
+                    st.session_state.app_urls[edited_name] = {
+                        "url": edited_url,
+                        "max_cupos": edited_cupos
+                    } 
+                    st.success("URL actualizada")
+                    time.sleep(1)
+                    st.rerun()
 
     # URL principal
     st.divider()
@@ -99,7 +133,8 @@ def admin_main():
     )
     
     if st.button("📋 Copiar URL de Gestión"):
-        quota_url = f"{st.session_state.app_urls[selected_url]}/?page=Gestión+de+Cupos"
+        url_key_encoded = quote(selected_url)
+        quota_url = f"http://localhost:8501/quota_view?url={url_key_encoded}"
         try:
             pyperclip.copy(quota_url)
             st.success("¡URL copiada al portapapeles!")

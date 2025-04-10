@@ -1,0 +1,10 @@
+{
+    "Principal": {
+        "url": "http://localhost:8501",
+        "max_cupos": 100
+    },
+    "Google": {
+        "url": "google.es",
+        "max_cupos": 10
+    }
+}

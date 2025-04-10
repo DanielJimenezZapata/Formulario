@@ -4,7 +4,7 @@ import mysql.connector
 class QuotaRepository:
     def __init__(self):
         self.db = ConnectionDB()
-
+    
     def get_remaining_slots(self):
         conn = self.db.connect_db()
         if not conn:
@@ -116,6 +116,41 @@ class QuotaRepository:
             cursor.execute("CREATE TABLE IF NOT EXISTS quota (id INT PRIMARY KEY, remaining INT)")
             cursor.execute("INSERT INTO quota (id, remaining) VALUES (1, 100)")
             conn.commit()
+        finally:
+            if conn.is_connected():
+                conn.close()
+
+    def get_current_quota_count(self, url_key: str) -> int:
+        conn = self.db.connect_db()
+        if not conn:
+            return 0
+        
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""CREATE TABLE IF NOT EXISTS url_quota(url_key VARCHAR(255) PRIMARY KEY, count INT NOT NULL DEFAULT 0)""")
+            cursor.execute("SELECT count FROM url_quota WHERE url_key =%s", (url_key,))
+            result = cursor.fetchone()
+            return result[0] if result else 0
+        except Exception as e:
+            print(f"Error al obtener count de {url_key}: {e}")
+            return 0
+        finally:
+            if conn.is_connected():
+                conn.close()
+    
+
+    def increment_quota_count(self, url_key: str):
+        conn = self.db.connect_db()
+        if not conn:
+            return False
+        
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""INSERT INTO url_quota(url_key, count) VALUES (%s, 1) ON DUPLICATE KEY UPDATE count = count + 1""", (url_key,))
+            return True
+        except Exception as e:
+            print(f"Error al incrementar count de {url_key}: {e}")
+            return False
         finally:
             if conn.is_connected():
                 conn.close()
