@@ -238,3 +238,109 @@ class QuotaRepository:
         finally:
             if conn.is_connected():
                 conn.close()
+
+
+    def get_url_quota(self, url_name):
+        conn = self.db.connect_db()
+        if not conn:
+            return {"remaining_quota": 0, "max_quota": 0}
+            
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT remaining_quota, max_quota 
+                FROM url_quotas 
+                WHERE url_name = %s
+            """, (url_name,))
+            result = cursor.fetchone()
+            
+            # Si no existe el registro, lo creamos con valores por defecto
+            if not result:
+                cursor.execute("""
+                    INSERT INTO url_quotas (url_name, url_path, max_quota, remaining_quota)
+                    VALUES (%s, (SELECT url FROM app_urls WHERE name = %s), 100, 100)
+                    ON DUPLICATE KEY UPDATE 
+                        max_quota = IF(remaining_quota <= 0, 100, max_quota),
+                        remaining_quota = IF(remaining_quota <= 0, 100, remaining_quota)
+                """, (url_name, url_name))
+                conn.commit()
+                return {"remaining_quota": 100, "max_quota": 100}
+                
+            return result
+        except Exception as e:
+            print(f"Error getting URL quota: {e}")
+            return {"remaining_quota": 100, "max_quota": 100}  # Fallback seguro
+        finally:
+            if conn.is_connected():
+                conn.close()
+
+    def decrement_url_quota(self, url_name):
+        conn = self.db.connect_db()
+        if not conn:
+            return {"error": "Database error"}
+            
+        try:
+            cursor = conn.cursor()
+            # Verificamos primero si hay cupos
+            cursor.execute("""
+                SELECT remaining_quota FROM url_quotas 
+                WHERE url_name = %s FOR UPDATE
+            """, (url_name,))
+            result = cursor.fetchone()
+            
+            if not result or result[0] <= 0:
+                return {"error": "No hay cupos disponibles"}
+            
+            # Actualizamos
+            cursor.execute("""
+                UPDATE url_quotas 
+                SET remaining_quota = remaining_quota - 1 
+                WHERE url_name = %s
+            """, (url_name,))
+            conn.commit()
+            return {"success": True, "remaining": result[0] - 1}
+        except Exception as e:
+            conn.rollback()
+            return {"error": str(e)}
+        finally:
+            if conn.is_connected():
+                conn.close()
+
+    def reset_url_quota(self, url_name, new_quota=100):
+        conn = self.db.connect_db()
+        if not conn:
+            return False
+            
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE url_quotas 
+                SET remaining_quota = %s,
+                    max_quota = %s,
+                    last_reset = CURRENT_TIMESTAMP
+                WHERE url_name = %s
+            """, (new_quota, new_quota, url_name))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error resetting quota: {e}")
+            return False
+        finally:
+            if conn.is_connected():
+                conn.close()
+
+    def get_all_quotas(self):
+        conn = self.db.connect_db()
+        if not conn:
+            return {}
+            
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT url_name, remaining_quota, max_quota FROM url_quotas")
+            return {item['url_name']: item for item in cursor.fetchall()}
+        except Exception as e:
+            print(f"Error getting quotas: {e}")
+            return {}
+        finally:
+            if conn.is_connected():
+                conn.close()

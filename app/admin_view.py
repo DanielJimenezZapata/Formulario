@@ -52,10 +52,7 @@ def admin_main():
     # Cargar URLs desde la base de datos
     if "app_urls" not in st.session_state:
         st.session_state.app_urls = quota_repo.get_all_urls()
-        if not st.session_state.app_urls:  # Si está vacío, añadir default
-            default_url = "http://localhost:8501"
-            quota_repo.save_url("Principal", default_url)
-            st.session_state.app_urls = {"Principal": default_url}
+        
 
     # Sección de cambio de contraseña
     st.divider()
@@ -76,6 +73,7 @@ def admin_main():
                     st.rerun()
                 else:
                     st.error("Error al actualizar la contraseña")
+   
 
     # Gestión de URLs
     st.divider()
@@ -165,13 +163,7 @@ def admin_main():
         key="selected_client_url"
     )
     
-    client_port = st.number_input(
-        "Puerto de la app cliente", 
-        value=8502, 
-        min_value=8000, 
-        max_value=9000,
-        key="client_port"
-    )
+    
     
     if st.button("🖇 Generar Enlace Cliente"):
         client_url = generate_client_url(
@@ -188,9 +180,10 @@ def admin_main():
             st.code(client_url)
 
     
-
+    
     # Cerrar sesión
     st.divider()
     if st.button("🚪 Cerrar sesión"):
         st.session_state.clear()
         st.rerun()
+
