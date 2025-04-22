@@ -1,11 +1,12 @@
 import streamlit as st
-from repository.quota_repository import QuotaRepository
+from quota_repository import QuotaRepository
 from admin_view import check_authentication
 
 def quota_main():
     st.title("📊 Gestión de Cupos")
     quota_repo = QuotaRepository()
 
+    # Mostrar métricas
     remaining = quota_repo.get_remaining_slots()
     
     col1, col2 = st.columns(2)
@@ -16,6 +17,7 @@ def quota_main():
     
     st.progress(remaining/100)
 
+    # Opciones de gestión
     st.divider()
     st.header("🛠️ Opciones de gestión")
     
@@ -35,6 +37,7 @@ def quota_main():
                 st.success("Cupo reducido")
                 st.rerun()
 
+    # Ajuste manual
     st.divider()
     new_value = st.number_input(
         "Establecer nuevo valor total",

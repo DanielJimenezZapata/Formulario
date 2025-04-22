@@ -22,3 +22,4 @@ class ConnectionDB:
         except mysql.connector.Error as err:
             st.error(f"Error de base de datos: {err}")
             return None
+

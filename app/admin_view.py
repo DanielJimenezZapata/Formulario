@@ -1,7 +1,9 @@
 import streamlit as st
 import time
 import pyperclip
-from repository.quota_repository import QuotaRepository
+import re
+from quota_repository import QuotaRepository
+from urllib.parse import quote
 
 def check_authentication():
     if "admin_logged" not in st.session_state:
@@ -29,9 +31,31 @@ def show_login():
                 st.error("Contraseña incorrecta")
     st.stop()
 
+def is_valid_url(url):
+    regex = re.compile(
+        r'^(https?://)'  # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain
+        r'localhost|'  # localhost
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ip
+        r'(?::\d+)?'  # port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+    return re.match(regex, url) is not None
+
+def generate_client_url(name, url, client_port=8502):
+    encoded_config = f"name={quote(name)}&url={quote(url)}"
+    return f"http://10.33.17.161:{client_port}/?{encoded_config}"
+
 def admin_main():
     st.title("🔧 Panel de Administración")
     quota_repo = QuotaRepository()
+    
+    # Cargar URLs desde la base de datos
+    if "app_urls" not in st.session_state:
+        st.session_state.app_urls = quota_repo.get_all_urls()
+        if not st.session_state.app_urls:  # Si está vacío, añadir default
+            default_url = "http://localhost:8501"
+            quota_repo.save_url("Principal", default_url)
+            st.session_state.app_urls = {"Principal": default_url}
 
     # Sección de cambio de contraseña
     st.divider()
@@ -57,78 +81,113 @@ def admin_main():
     st.divider()
     st.header("📌 Gestión de URLs")
     
-    if "app_urls" not in st.session_state:
-        st.session_state.app_urls = {"Principal": "http://localhost:8501"}
-    
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         with st.expander("➕ Añadir URL"):
-            new_name = st.text_input("Nombre descriptivo")
-            new_url = st.text_input("URL completa (https://)")
+            new_name = st.text_input("Nombre descriptivo", key="new_url_name")
+            new_url = st.text_input("URL completa (https://)", key="new_url_value")
             if st.button("Guardar URL"):
-                if new_name and new_url:
-                    st.session_state.app_urls[new_name] = new_url
-                    st.success("URL añadida")
-                    time.sleep(1)
-                    st.rerun()
-
+                if not new_name or not new_url:
+                    st.warning("Complete todos los campos")
+                elif not is_valid_url(new_url):
+                    st.error("URL no válida. Debe comenzar con http:// o https://")
+                else:
+                    if quota_repo.save_url(new_name, new_url):
+                        st.session_state.app_urls = quota_repo.get_all_urls()
+                        st.success("URL añadida")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Error al guardar en la base de datos")
     with col2:
+        with st.expander("✏️ Editar URL", expanded=True):
+            if st.session_state.app_urls:
+                url_to_edit = st.selectbox(
+                    "Selecciona URL a editar",
+                    options=list(st.session_state.app_urls.keys()),
+                    key="url_to_edit"
+                )
+                
+                new_name = st.text_input(
+                    "Nuevo nombre",
+                    value=url_to_edit,
+                    key="new_url_name_edit"
+                )
+                
+                new_url = st.text_input(
+                    "Nueva URL",
+                    value=st.session_state.app_urls[url_to_edit],
+                    key="new_url_value_edit"
+                )
+                
+                if st.button("💾 Guardar cambios", key="save_edit"):
+                    if not new_name or not new_url:
+                        st.warning("Complete todos los campos")
+                    elif not is_valid_url(new_url):
+                        st.error("URL no válida. Debe comenzar con http:// o https://")
+                    elif new_name != url_to_edit and new_name in st.session_state.app_urls:
+                        st.error("Ya existe una URL con ese nombre")
+                    else:
+                        if quota_repo.update_url(url_to_edit, new_name, new_url):
+                            st.session_state.app_urls = quota_repo.get_all_urls()
+                            st.success("URL actualizada")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Error al actualizar en la base de datos")
+    with col3:
         with st.expander("➖ Eliminar URL"):
             if len(st.session_state.app_urls) > 1:
                 url_to_delete = st.selectbox(
                     "Selecciona URL a eliminar",
-                    options=list(st.session_state.app_urls.keys())[1:]
+                    options=list(st.session_state.app_urls.keys())[1:],
+                    key="url_to_delete"
                 )
                 if st.button("Confirmar eliminación"):
-                    del st.session_state.app_urls[url_to_delete]
-                    st.success("URL eliminada")
-                    time.sleep(1)
-                    st.rerun()
+                    if quota_repo.delete_url(url_to_delete):
+                        st.session_state.app_urls = quota_repo.get_all_urls()
+                        st.success("URL eliminada")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Error al eliminar de la base de datos")
             else:
                 st.warning("Debe haber al menos una URL")
 
-    # URL principal
+    # Generación de URLs para clientes
     st.divider()
-    st.subheader("🌐 URL Principal")
-    selected_url = st.selectbox(
-        "Selecciona la URL a mostrar",
-        options=list(st.session_state.app_urls.keys())
+    st.header("👥 Acceso para Clientes")
+    
+    selected_client_url = st.selectbox(
+        "Seleccione recurso para compartir",
+        options=list(st.session_state.app_urls.keys()),
+        key="selected_client_url"
     )
     
-    quota_url = f"{st.session_state.app_urls[selected_url]}/?page=Gestión+de+Cupos"
-    if st.button("📋 Copiar URL de Gestión"):
+    client_port = st.number_input(
+        "Puerto de la app cliente", 
+        value=8502, 
+        min_value=8000, 
+        max_value=9000,
+        key="client_port"
+    )
+    
+    if st.button("🖇 Generar Enlace Cliente"):
+        client_url = generate_client_url(
+            selected_client_url,
+            st.session_state.app_urls[selected_client_url],
+            client_port
+        )
         try:
-            pyperclip.copy(quota_url)
-            st.success("¡URL copiada al portapapeles!")
-        except:
-            st.code(quota_url)
-
-    # Generar acceso para cliente
-    st.divider()
-    st.subheader("🔗 Generar Acceso para Cliente")
-    
-    client_url = f"{st.session_state.app_urls[selected_url]}/client_access?url={quota_url}"
-    launch_cmd = f"streamlit run client_access.py --server.address=0.0.0.0 --server.port=8502 --?url={quota_url}"
-    
-    st.code(launch_cmd)
-    
-    if st.button("📋 Copiar comando para lanzar cliente"):
-        try:
-            pyperclip.copy(launch_cmd)
-            st.success("Comando copiado al portapapeles!")
+            pyperclip.copy(client_url)
+            st.success("¡Enlace copiado al portapapeles!")
+            st.code(client_url)
         except:
             st.error("Error al copiar al portapapeles")
-    
-    st.markdown(f"O acceder directamente a: [Client Access]({client_url})")
+            st.code(client_url)
 
-    # Gestión de cupos
-    st.divider()
-    if st.button("🔄 Resetear cupos a 100"):
-        if quota_repo.reset_slots():
-            st.success("Cupos reseteados")
-            time.sleep(1)
-            st.rerun()
+    
 
     # Cerrar sesión
     st.divider()

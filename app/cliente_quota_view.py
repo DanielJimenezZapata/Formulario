@@ -1,12 +1,13 @@
 import time
 import streamlit as st
-from repository.quota_repository import QuotaRepository
+from quota_repository import QuotaRepository
 from admin_view import check_authentication
 
 def client_quota_main():
     st.title("🎟️ Registro de Cupo")
     quota_repo = QuotaRepository()
     
+    # Mostrar disponibilidad
     disponibles = quota_repo.get_remaining_slots()
     
     if disponibles <= 0:
@@ -16,6 +17,7 @@ def client_quota_main():
         st.success(f"✅ Cupos disponibles: {disponibles}")
         st.progress(disponibles/100)
         
+        # Formulario de registro
         with st.form("registro"):
             nombre = st.text_input("Nombre completo*")
             email = st.text_input("Email*")
