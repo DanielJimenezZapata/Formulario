@@ -47,7 +47,7 @@ def is_valid_url(url):
 
 load_dotenv()
 def generate_client_url(name, url):
-    client_port = os.getenv('CLIENT_PORT', '8502')  # Default 8502
+    client_port = os.getenv('CLIENT_PORT', '8501')  # Default 8501
     encoded_config = f"name={quote(name)}&url={quote(url)}"
     return f"http://10.33.17.161:{client_port}/?{encoded_config}"
 
@@ -106,44 +106,45 @@ def admin_main():
                         st.error("Error al guardar en la base de datos")
     with col2:
         with st.expander("✏️ Editar URL", expanded=True):
-            url_to_edit = st.selectbox(
-                "Selecciona URL a editar",
-                options=list(st.session_state.app_urls.keys()),
-                key="edit_url_selector"
-            )
+            try:
+                url_to_edit = st.selectbox(
+                    "Selecciona URL a editar",
+                    options=list(st.session_state.app_urls.keys()),
+                    key="edit_url_selector"
+                )
+                current_url = st.session_state.app_urls[url_to_edit]
             
-            # Usar valores actuales como placeholders
-            current_url = st.session_state.app_urls[url_to_edit]
-            
-            new_name = st.text_input(
-                "Nuevo nombre descriptivo",
-                value=url_to_edit,
-                key=f"new_name_{url_to_edit}"
-            )
-            
-            new_url = st.text_input(
-                "Nueva URL completa (https://)",
-                value=current_url,
-                key=f"new_url_{url_to_edit}"
-            )
-            
-            if st.button("💾 Guardar Cambios", key=f"save_btn_{url_to_edit}"):
-                if not new_name or not new_url:
-                    st.warning("⚠️ Complete todos los campos")
-                elif not is_valid_url(new_url):
-                    st.error("❌ URL no válida. Debe comenzar con http:// o https://")
-                else:
-                    try:
-                        if quota_repo.update_url(url_to_edit, new_name, new_url):
-                            st.session_state.app_urls = quota_repo.get_all_urls()
-                            st.success("✅ URL actualizada correctamente")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.warning("ℹ️ No se realizaron cambios (¿los datos son iguales o ya existen?)")
-                    except Exception as e:
-                        st.error(f"❌ Error crítico: {str(e)}")
-                        st.code(str(e))  # Mostrar detalles
+                new_name = st.text_input(
+                    "Nuevo nombre descriptivo",
+                    value=url_to_edit,
+                    key=f"new_name_{url_to_edit}"
+                )
+                
+                new_url = st.text_input(
+                    "Nueva URL completa (https://)",
+                    value=current_url,
+                    key=f"new_url_{url_to_edit}"
+                )
+                
+                if st.button("💾 Guardar Cambios", key=f"save_btn_{url_to_edit}"):
+                    if not new_name or not new_url:
+                        st.warning("⚠️ Complete todos los campos")
+                    elif not is_valid_url(new_url):
+                        st.error("❌ URL no válida. Debe comenzar con http:// o https://")
+                    else:
+                        try:
+                            if quota_repo.update_url(url_to_edit, new_name, new_url):
+                                st.session_state.app_urls = quota_repo.get_all_urls()
+                                st.success("✅ URL actualizada correctamente")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.warning("ℹ️ No se realizaron cambios (¿los datos son iguales o ya existen?)")
+                        except Exception as e:
+                            st.error(f"❌ Error crítico: {str(e)}")
+                            st.code(str(e))  # Mostrar detalles técnicos
+            except (KeyError, AttributeError):
+                st.info("ℹ️ No hay URLs disponibles para editar")
     with col3:
         with st.expander("➖ Eliminar URL", expanded=True):
             # Obtener lista de URLs que se pueden eliminar (excluyendo Principal)
