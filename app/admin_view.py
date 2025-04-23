@@ -4,6 +4,10 @@ import pyperclip
 import re
 from quota_repository import QuotaRepository
 from urllib.parse import quote
+from dotenv import load_dotenv
+import os
+
+
 
 def check_authentication():
     if "admin_logged" not in st.session_state:
@@ -41,7 +45,9 @@ def is_valid_url(url):
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
     return re.match(regex, url) is not None
 
-def generate_client_url(name, url, client_port=8502):
+load_dotenv()
+def generate_client_url(name, url):
+    client_port = os.getenv('CLIENT_PORT', '8502')  # Default 8502
     encoded_config = f"name={quote(name)}&url={quote(url)}"
     return f"http://10.33.17.161:{client_port}/?{encoded_config}"
 
@@ -100,58 +106,68 @@ def admin_main():
                         st.error("Error al guardar en la base de datos")
     with col2:
         with st.expander("✏️ Editar URL", expanded=True):
-            if st.session_state.app_urls:
-                url_to_edit = st.selectbox(
-                    "Selecciona URL a editar",
-                    options=list(st.session_state.app_urls.keys()),
-                    key="url_to_edit"
-                )
-                
-                new_name = st.text_input(
-                    "Nuevo nombre",
-                    value=url_to_edit,
-                    key="new_url_name_edit"
-                )
-                
-                new_url = st.text_input(
-                    "Nueva URL",
-                    value=st.session_state.app_urls[url_to_edit],
-                    key="new_url_value_edit"
-                )
-                
-                if st.button("💾 Guardar cambios", key="save_edit"):
-                    if not new_name or not new_url:
-                        st.warning("Complete todos los campos")
-                    elif not is_valid_url(new_url):
-                        st.error("URL no válida. Debe comenzar con http:// o https://")
-                    elif new_name != url_to_edit and new_name in st.session_state.app_urls:
-                        st.error("Ya existe una URL con ese nombre")
-                    else:
+            url_to_edit = st.selectbox(
+                "Selecciona URL a editar",
+                options=list(st.session_state.app_urls.keys()),
+                key="edit_url_selector"
+            )
+            
+            # Usar valores actuales como placeholders
+            current_url = st.session_state.app_urls[url_to_edit]
+            
+            new_name = st.text_input(
+                "Nuevo nombre descriptivo",
+                value=url_to_edit,
+                key=f"new_name_{url_to_edit}"
+            )
+            
+            new_url = st.text_input(
+                "Nueva URL completa (https://)",
+                value=current_url,
+                key=f"new_url_{url_to_edit}"
+            )
+            
+            if st.button("💾 Guardar Cambios", key=f"save_btn_{url_to_edit}"):
+                if not new_name or not new_url:
+                    st.warning("⚠️ Complete todos los campos")
+                elif not is_valid_url(new_url):
+                    st.error("❌ URL no válida. Debe comenzar con http:// o https://")
+                else:
+                    try:
                         if quota_repo.update_url(url_to_edit, new_name, new_url):
                             st.session_state.app_urls = quota_repo.get_all_urls()
-                            st.success("URL actualizada")
+                            st.success("✅ URL actualizada correctamente")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("Error al actualizar en la base de datos")
+                            st.warning("ℹ️ No se realizaron cambios (¿los datos son iguales o ya existen?)")
+                    except Exception as e:
+                        st.error(f"❌ Error crítico: {str(e)}")
+                        st.code(str(e))  # Mostrar detalles técnicos
     with col3:
-        with st.expander("➖ Eliminar URL"):
-            if len(st.session_state.app_urls) > 1:
+        with st.expander("➖ Eliminar URL", expanded=True):
+            # Obtener lista de URLs que se pueden eliminar (excluyendo Principal)
+            available_urls = list(st.session_state.app_urls.keys())
+            deletable_urls = [name for name in available_urls if name != "Principal"]
+            
+            if not deletable_urls:
+                st.warning("No hay URLs adicionales para eliminar")
+            else:
+                # Definir url_to_delete antes de usarla
                 url_to_delete = st.selectbox(
                     "Selecciona URL a eliminar",
-                    options=list(st.session_state.app_urls.keys())[1:],
+                    options=deletable_urls,
                     key="url_to_delete"
                 )
-                if st.button("Confirmar eliminación"):
-                    if quota_repo.delete_url(url_to_delete):
+                
+                if st.button("Confirmar eliminación", key="confirm_delete"):
+                    if quota_repo.delete_url(url_to_delete):  # Ahora url_to_delete está definida
                         st.session_state.app_urls = quota_repo.get_all_urls()
-                        st.success("URL eliminada")
+                        st.success(f"URL '{url_to_delete}' eliminada correctamente")
                         time.sleep(1)
                         st.rerun()
                     else:
                         st.error("Error al eliminar de la base de datos")
-            else:
-                st.warning("Debe haber al menos una URL")
 
     # Generación de URLs para clientes
     st.divider()
@@ -168,8 +184,7 @@ def admin_main():
     if st.button("🖇 Generar Enlace Cliente"):
         client_url = generate_client_url(
             selected_client_url,
-            st.session_state.app_urls[selected_client_url],
-            client_port
+            st.session_state.app_urls[selected_client_url]
         )
         try:
             pyperclip.copy(client_url)

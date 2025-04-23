@@ -1,7 +1,6 @@
 import streamlit as st
 from admin_view import admin_main, check_authentication
 from quota_management import quota_main
-from cliente_quota_view import client_quota_main
 from streamlit_option_menu import option_menu
 
 def main():

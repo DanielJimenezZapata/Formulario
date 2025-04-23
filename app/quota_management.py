@@ -55,12 +55,17 @@ def quota_main():
             min_value=1,
             max_value=1000,
             value=quota_info['max_quota'],
-            key=f"max_quota_input_{selected_url}"
+            key=f"max_quota_{selected_url}"
         )
         
-        # Cambio aquí también: Usamos las columnas directamente
-        cols = st.columns(1)
-        cols[0].button("🔄 Resetear Cupos", key=f"reset_{selected_url}")
+        if st.button("🔄 Resetear cupos", key=f"reset_{selected_url}"):
+            with st.spinner("Actualizando cupos..."):
+                if quota_repo.reset_url_quota(selected_url, int(new_quota)):
+                    st.toast(f"✅ Cupos reseteados a {new_quota} para {selected_url}", icon="✅")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ No se pudo actualizar. Verifica la consola para más detalles.")
     
     # --- Resumen General ---
     st.divider()

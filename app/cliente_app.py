@@ -41,6 +41,6 @@ def main():
                        unsafe_allow_html=True)
     
     st.markdown("---")
-    st.caption(f"Cupos específicos para este recurso | Último reset: {quota_info.get('last_reset', 'N/A')}")
+    st.caption("Cupos específicos para este recurso | Version 1.0")
 if __name__ == "__main__":
     main()
