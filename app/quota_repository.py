@@ -193,10 +193,10 @@ class QuotaRepository:
         try:
             cursor = conn.cursor()
             
-            # 1. Eliminar primero de url_quotas (por la foreign key)
+            # Eliminar primero de url_quotas (por la foreign key)
             cursor.execute("DELETE FROM url_quotas WHERE url_name = %s", (url_name,))
             
-            # 2. Luego eliminar de app_urls
+            # Luego eliminar de app_urls
             cursor.execute("DELETE FROM app_urls WHERE name = %s", (url_name,))
             
             conn.commit()

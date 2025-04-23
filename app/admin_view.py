@@ -143,7 +143,7 @@ def admin_main():
                             st.warning("ℹ️ No se realizaron cambios (¿los datos son iguales o ya existen?)")
                     except Exception as e:
                         st.error(f"❌ Error crítico: {str(e)}")
-                        st.code(str(e))  # Mostrar detalles técnicos
+                        st.code(str(e))  # Mostrar detalles
     with col3:
         with st.expander("➖ Eliminar URL", expanded=True):
             # Obtener lista de URLs que se pueden eliminar (excluyendo Principal)
