@@ -355,41 +355,49 @@ class QuotaRepository:
                 conn.close()
                 
     def record_failed_attempt(self, ip_address):
-        """Registra un intento fallido en memoria (no persistente)"""
-        # Obtener intentos actuales o inicializar
-        attempts = self._failed_attempts.get(ip_address, {}).get("attempts", 0) + 1
+        """Registra un intento fallido con bloqueo progresivo"""
+        # Obtener o inicializar datos de la IP
+        ip_data = self._failed_attempts.get(ip_address, {
+            "total_attempts": 0,    # Intentos totales
+            "cycle_attempts": 0,    # Intentos en el ciclo actual (1-3)
+            "block_cycles": 0,      # Número de veces que se ha bloqueado (1, 2, 3...)
+            "blocked_until": None,  # Tiempo de desbloqueo
+            "last_attempt": 0       # Timestamp del último intento
+        })
         
-        # Calcular tiempo de bloqueo si supera el límite
-        blocked_until = None
-        if attempts >= 3:
-            blocked_until = time.time() + 180  # 3 minutos en segundos
+        # Incrementar contadores
+        ip_data["total_attempts"] += 1
+        ip_data["cycle_attempts"] += 1
+        ip_data["last_attempt"] = time.time()
         
-        # Actualizar en memoria
-        self._failed_attempts[ip_address] = {
-            "attempts": attempts,
-            "blocked_until": blocked_until,
-            "last_attempt": time.time()
-        }
-        
-        return attempts
+        # Cada 3 intentos en el mismo ciclo, aumentar bloqueo
+        if ip_data["cycle_attempts"] >= 3:
+            ip_data["block_cycles"] += 1
+            block_minutes = 3 * ip_data["block_cycles"]  # 3, 6, 9, 12...
+            ip_data["blocked_until"] = time.time() + (block_minutes * 60)
+            ip_data["cycle_attempts"] = 0  # Reiniciar contador de ciclo
+            
+        self._failed_attempts[ip_address] = ip_data
+        return ip_data["total_attempts"]
 
     def is_ip_blocked(self, ip_address):
-        """Verifica si una IP está bloqueada (en memoria)"""
-        ip_data = self._failed_attempts.get(ip_address, {})
+        """Verifica el estado de bloqueo y devuelve el tiempo formateado"""
+        ip_data = self._failed_attempts.get(ip_address)
         
-        # Si no hay datos o no está bloqueado
         if not ip_data or not ip_data.get("blocked_until"):
             return None
         
-        # Si el bloqueo ya expiró
-        if ip_data["blocked_until"] < time.time():
-            self._failed_attempts[ip_address]["blocked_until"] = None
-            self._failed_attempts[ip_address]["attempts"] = 0
+        current_time = time.time()
+        blocked_until = ip_data["blocked_until"]
+        
+        # Si el bloqueo expiró
+        if blocked_until < current_time:
+            ip_data["blocked_until"] = None
+            self._failed_attempts[ip_address] = ip_data
             return None
         
-        # Convertir timestamp a formato legible
-        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(ip_data["blocked_until"]))
-    
+        # Formatear la hora de desbloqueo
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(blocked_until))
     def clear_all_blocks(self):
         """Limpia todos los bloqueos de IP"""
         self._failed_attempts = {}

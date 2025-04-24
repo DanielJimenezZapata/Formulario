@@ -45,22 +45,19 @@ def show_login(quota_repo, client_ip):
         if submit_button:
             print(f"🔑 [INTENTO LOGIN] IP: {client_ip} | Hora: {time.strftime('%Y-%m-%d %H:%M:%S')}")
             if quota_repo.verify_admin_password(password):
+                # Limpiar bloqueos si el login es exitoso
+                if client_ip in quota_repo._failed_attempts:
+                    del quota_repo._failed_attempts[client_ip]
                 st.session_state.admin_logged = True
                 print(f"✅ [LOGIN EXITOSO] IP: {client_ip}")
                 st.success("Login exitoso")
                 time.sleep(1)
                 st.rerun()
             else:
-                # Registrar intento fallido
                 attempts = quota_repo.record_failed_attempt(client_ip)
-                print(f"❌ [LOGIN FALLIDO] IP: {client_ip} | Intentos: {attempts}")
+                print(f"❌ [LOGIN FALLIDO] IP: {client_ip} | Intentos totales: {attempts}")
+                
                 st.error("Contraseña incorrecta")
-                # Verificar si ahora está bloqueado
-                if quota_repo.is_ip_blocked(client_ip):
-                    print(f"🚨 [IP BLOQUEADA] IP: {client_ip} | Bloqueado por 3 minutos")
-                    st.error("Demasiados intentos fallidos. Acceso bloqueado por 3 minutos.")
-                    time.sleep(1)
-                    st.rerun()
 
 
 def is_valid_url(url):
