@@ -7,33 +7,61 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 import os
 
+def get_client_ip():
+    """Obtiene la IP real del cliente"""
+    import socket
+    try:
+        hostname = socket.gethostname()
+        return socket.gethostbyname(hostname)
+    except:
+        return "127.0.0.1"  # Fallback para localhost
 
 
 def check_authentication():
     if "admin_logged" not in st.session_state:
         st.session_state.admin_logged = False
     
+    quota_repo = QuotaRepository()
+    client_ip = get_client_ip()
+    
+    # Verificar si la IP está bloqueada
+    blocked_until = quota_repo.is_ip_blocked(client_ip)
+    if blocked_until:
+        print(f"🚨 [BLOQUEO ACTIVO] IP: {client_ip} | Bloqueado hasta: {blocked_until}")
+        st.error(f"🔒 Acceso bloqueado. Intenta nuevamente después de {blocked_until}")
+        st.stop()
+    
     if not st.session_state.admin_logged:
-        show_login()
+        show_login(quota_repo, client_ip)
         return False
     return True
 
-def show_login():
+def show_login(quota_repo, client_ip):
     st.title("🔒 Acceso Administrativo")
     with st.form("login_form"):
         password = st.text_input("Contraseña", type="password")
         submit_button = st.form_submit_button("Ingresar")
         
         if submit_button:
-            quota_repo = QuotaRepository()
+            print(f"🔑 [INTENTO LOGIN] IP: {client_ip} | Hora: {time.strftime('%Y-%m-%d %H:%M:%S')}")
             if quota_repo.verify_admin_password(password):
                 st.session_state.admin_logged = True
+                print(f"✅ [LOGIN EXITOSO] IP: {client_ip}")
                 st.success("Login exitoso")
                 time.sleep(1)
                 st.rerun()
             else:
+                # Registrar intento fallido
+                attempts = quota_repo.record_failed_attempt(client_ip)
+                print(f"❌ [LOGIN FALLIDO] IP: {client_ip} | Intentos: {attempts}")
                 st.error("Contraseña incorrecta")
-    st.stop()
+                # Verificar si ahora está bloqueado
+                if quota_repo.is_ip_blocked(client_ip):
+                    print(f"🚨 [IP BLOQUEADA] IP: {client_ip} | Bloqueado por 3 minutos")
+                    st.error("Demasiados intentos fallidos. Acceso bloqueado por 3 minutos.")
+                    time.sleep(1)
+                    st.rerun()
+
 
 def is_valid_url(url):
     regex = re.compile(
@@ -183,17 +211,20 @@ def admin_main():
     
     
     if st.button("🖇 Generar Enlace Cliente"):
-        client_url = generate_client_url(
-            selected_client_url,
-            st.session_state.app_urls[selected_client_url]
-        )
         try:
-            pyperclip.copy(client_url)
-            st.success("¡Enlace copiado al portapapeles!")
-            st.code(client_url)
-        except:
-            st.error("Error al copiar al portapapeles")
-            st.code(client_url)
+            client_url = generate_client_url(
+                selected_client_url,
+                st.session_state.app_urls[selected_client_url]
+            )
+            try:
+                pyperclip.copy(client_url)
+                st.success("¡Enlace copiado al portapapeles!")
+                st.code(client_url)
+            except:
+                st.error("Error al copiar al portapapeles")
+                st.code(client_url)
+        except (KeyError, AttributeError):
+                st.info("No puedes generar URL")
 
     
     

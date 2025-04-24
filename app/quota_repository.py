@@ -1,3 +1,4 @@
+import time
 from connection_db import ConnectionDB
 import mysql.connector
 
@@ -348,6 +349,103 @@ class QuotaRepository:
         except Exception as e:
             print(f"Error getting quotas: {e}")
             return {}
+        finally:
+            if conn.is_connected():
+                conn.close()
+                
+    def record_failed_attempt(self, ip_address):
+        """Registra un intento fallido desde una IP"""
+        conn = self.db.connect_db()
+        if not conn:
+            return 0
+            
+        try:
+            cursor = conn.cursor(dictionary=True)
+            
+            # 1. Obtener el estado actual de la IP
+            cursor.execute("""
+                SELECT attempts, blocked_until 
+                FROM failed_logins 
+                WHERE ip_address = %s
+                FOR UPDATE
+            """, (ip_address,))
+            result = cursor.fetchone()
+            
+            # 2. Si no existe registro o el bloqueo expiró, reiniciar contador
+            if not result or (result['blocked_until'] and result['blocked_until'] < time.strftime('%Y-%m-%d %H:%M:%S')):
+                cursor.execute("""
+                    INSERT INTO failed_logins (ip_address, attempts, last_attempt, blocked_until)
+                    VALUES (%s, 1, NOW(), NULL)
+                    ON DUPLICATE KEY UPDATE 
+                        attempts = 1,
+                        blocked_until = NULL,
+                        last_attempt = NOW()
+                """, (ip_address,))
+                attempts = 1
+            else:
+                # 3. Incrementar intentos si no está bloqueado
+                if not result['blocked_until']:
+                    attempts = result['attempts'] + 1
+                    cursor.execute("""
+                        UPDATE failed_logins 
+                        SET attempts = %s,
+                            last_attempt = NOW()
+                        WHERE ip_address = %s
+                    """, (attempts, ip_address))
+                else:
+                    attempts = result['attempts']
+            
+            # 4. Bloquear si alcanza 3 intentos
+            if attempts >= 3:
+                cursor.execute("""
+                    UPDATE failed_logins
+                    SET blocked_until = DATE_ADD(NOW(), INTERVAL 3 MINUTE)
+                    WHERE ip_address = %s
+                """, (ip_address,))
+                print(f"🚨 [BLOQUEO] IP {ip_address} bloqueada por 3 minutos")
+            
+            conn.commit()
+            return attempts
+        except Exception as e:
+            print(f"Error recording failed attempt: {e}")
+            conn.rollback()
+            return 0
+        finally:
+            if conn.is_connected():
+                conn.close()
+
+    def is_ip_blocked(self, ip_address):
+        """Verifica si una IP está bloqueada"""
+        conn = self.db.connect_db()
+        if not conn:
+            return None
+            
+        try:
+            cursor = conn.cursor()
+            
+            # Primero limpiar bloqueos expirados
+            cursor.execute("""
+                UPDATE failed_logins 
+                SET attempts = 0, 
+                    blocked_until = NULL 
+                WHERE ip_address = %s 
+                AND blocked_until IS NOT NULL 
+                AND blocked_until < NOW()
+            """, (ip_address,))
+            conn.commit()
+            
+            # Luego verificar si está bloqueado
+            cursor.execute("""
+                SELECT blocked_until FROM failed_logins 
+                WHERE ip_address = %s 
+                AND blocked_until IS NOT NULL
+                AND blocked_until > NOW()
+            """, (ip_address,))
+            result = cursor.fetchone()
+            return result[0] if result else None
+        except Exception as e:
+            print(f"Error checking blocked IP: {e}")
+            return None
         finally:
             if conn.is_connected():
                 conn.close()

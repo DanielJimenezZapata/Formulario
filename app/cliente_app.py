@@ -24,10 +24,11 @@ def main():
     quota_repo = QuotaRepository()
     print(f"Consultando cupos para: {url_name}")  # Verifica en la terminal
     quota_info = quota_repo.get_url_quota(url_name)
-    print(f"Resultado de BD: {quota_info}")  # Debe mostrar {'remaining_quota': 100, ...}
+    print(f"Resultado de BD: {quota_info}")  
     
     if quota_info['remaining_quota'] <= 0:
         st.error("❌ No hay cupos disponibles para este recurso")
+        st.info("Pongase en contacto con: fabian.roa@colegiovalledelmiro.es")
         return
     
     st.title(f"Acceso a {url_name}")
